@@ -1,0 +1,12 @@
+{
+  "watch": [
+    "server/index.mjs",
+    "server/.env",
+    "server/.env.local",
+    ".env",
+    ".env.local"
+  ],
+  "ext": "mjs,js,cjs,json",
+  "exec": "node server/index.mjs",
+  "delay": "300ms"
+}

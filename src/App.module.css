@@ -1,0 +1,121 @@
+.deskRoot {
+  display: contents;
+}
+
+.shell {
+  min-height: 100svh;
+  background: #0b0d12;
+  color: #e6eaf0;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+.frame {
+  width: 100%;
+  max-width: 1440px;
+  min-height: 1024px;
+  margin: 0 auto;
+  padding: 32px 80px 48px;
+  box-sizing: border-box;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  column-gap: 24px;
+  row-gap: 24px;
+  align-items: stretch;
+}
+
+.topRow {
+  display: contents;
+}
+
+.cellMarket {
+  grid-column: span 5;
+}
+
+.cellMarketWide {
+  grid-column: span 12;
+}
+
+.cellWatchlist {
+  grid-column: span 7;
+}
+
+.quotesRow {
+  grid-column: span 12;
+}
+
+.sectionLabel {
+  margin: 0 0 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #9ca3af;
+}
+
+.executionBlock {
+  grid-column: span 12;
+}
+
+.executionInner {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tradeStack {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.executionEmpty {
+  margin: 0;
+  padding: 16px 0;
+  font-size: 14px;
+  color: #9ca3af;
+  max-width: 520px;
+  line-height: 1.5;
+}
+
+.xFeedBlock {
+  grid-column: span 12;
+}
+
+.bottomRow {
+  display: contents;
+}
+
+.cellRisk {
+  grid-column: span 6;
+}
+
+.cellJournal {
+  grid-column: span 6;
+}
+
+@media (max-width: 1200px) {
+  .frame {
+    padding: 24px 40px 40px;
+  }
+
+  .cellMarket,
+  .cellMarketWide,
+  .cellWatchlist,
+  .cellRisk,
+  .cellJournal {
+    grid-column: span 12;
+  }
+
+  .tradeStack {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .frame {
+    padding: 20px 24px 32px;
+  }
+}

@@ -1,0 +1,38 @@
+:root {
+  --bg-app: #0b0d12;
+  --card: #151821;
+  --card-market: #0f1115;
+  --border: #1f2933;
+  --text-primary: #e6eaf0;
+  --text-secondary: #9ca3af;
+  --green: #22c55e;
+  --red: #ef4444;
+  --yellow: #f59e0b;
+
+  color-scheme: dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100svh;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+  font-weight: 400;
+}
+
+#root {
+  min-height: 100svh;
+}
