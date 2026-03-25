@@ -66,6 +66,7 @@ export function DeskHeader({
   onOpenPrices,
   deskView,
   onOpenHistory,
+  onOpenAggregate,
   onOpenDesk,
 }: {
   planActionError: string | null
@@ -75,8 +76,9 @@ export function DeskHeader({
   onOpenSettings: () => void
   onOpenJournal: () => void
   onOpenPrices: () => void
-  deskView: 'desk' | 'history'
+  deskView: 'desk' | 'history' | 'aggregate'
   onOpenHistory: () => void
+  onOpenAggregate: () => void
   onOpenDesk: () => void
 }) {
   const [now, setNow] = useState(() => new Date())
@@ -144,6 +146,18 @@ export function DeskHeader({
           aria-current={deskView === 'history' ? 'page' : undefined}
         >
           History
+        </button>
+        <button
+          type="button"
+          className={
+            deskView === 'aggregate'
+              ? `${styles.btn} ${styles.navOn}`
+              : styles.btn
+          }
+          onClick={onOpenAggregate}
+          aria-current={deskView === 'aggregate' ? 'page' : undefined}
+        >
+          Aggregate
         </button>
         <button type="button" className={styles.btn} onClick={onOpenJournal}>
           Journal

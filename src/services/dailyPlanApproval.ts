@@ -3,34 +3,55 @@ import { planMaxRiskDollars } from './tradePlanMoney'
 import { planMeetsMorningQualityGate } from './tradePlanQuality'
 import { MIN_EXPECTED_R, MIN_MORNING_SCORE } from './strategyScore'
 
-/** Slots used: approved (queued) + entered (live). */
-export function countTradeSlotsUsed(tradePlans: TradePlan[]): number {
+function plansInDailyPlan(
+  dailyPlan: DailyPlan | null,
+  tradePlans: TradePlan[],
+): TradePlan[] {
+  if (!dailyPlan) return []
+  const ids = new Set(dailyPlan.approvedPlans)
   return tradePlans.filter(
-    (p) => p.status === 'approved' || p.status === 'entered',
-  ).length
+    (p) =>
+      ids.has(p.id) && (p.status === 'approved' || p.status === 'entered'),
+  )
+}
+
+/** Slots used: approved (queued) + entered (live). */
+export function countTradeSlotsUsed(
+  tradePlans: TradePlan[],
+  dailyPlan?: DailyPlan | null,
+): number {
+  const scoped = dailyPlan ? plansInDailyPlan(dailyPlan, tradePlans) : tradePlans
+  return scoped.filter((p) => p.status === 'approved' || p.status === 'entered')
+    .length
 }
 
 /** Sum of risk $ for approved or entered plans (committed capital at risk). */
-export function committedPlanRisk(tradePlans: TradePlan[]): number {
-  return tradePlans
+export function committedPlanRisk(
+  tradePlans: TradePlan[],
+  dailyPlan?: DailyPlan | null,
+): number {
+  const scoped = dailyPlan ? plansInDailyPlan(dailyPlan, tradePlans) : tradePlans
+  return scoped
     .filter((p) => p.status === 'approved' || p.status === 'entered')
     .reduce((s, p) => s + planMaxRiskDollars(p), 0)
 }
 
 export function canApproveMoreTrades(
   tradePlans: TradePlan[],
+  dailyPlan: DailyPlan,
   maxTrades: number,
 ): boolean {
-  return countTradeSlotsUsed(tradePlans) < maxTrades
+  return countTradeSlotsUsed(tradePlans, dailyPlan) < maxTrades
 }
 
 /** If we approve `plan`, would committed risk exceed cap? */
 export function wouldExceedDailyLoss(
   tradePlans: TradePlan[],
+  dailyPlan: DailyPlan,
   plan: TradePlan,
   maxDailyLoss: number,
 ): boolean {
-  const others = committedPlanRisk(tradePlans)
+  const others = committedPlanRisk(tradePlans, dailyPlan)
   return others + planMaxRiskDollars(plan) > maxDailyLoss
 }
 
@@ -48,9 +69,9 @@ export function whyCannotApprove(
 ): ApprovalBlockReason {
   if (!dailyPlan || dailyPlan.status === 'closed') return 'closed'
   if (!planMeetsMorningQualityGate(plan)) return 'quality'
-  if (!canApproveMoreTrades(tradePlans, dailyPlan.maxTrades))
+  if (!canApproveMoreTrades(tradePlans, dailyPlan, dailyPlan.maxTrades))
     return 'max_trades'
-  if (wouldExceedDailyLoss(tradePlans, plan, dailyPlan.maxDailyLoss))
+  if (wouldExceedDailyLoss(tradePlans, dailyPlan, plan, dailyPlan.maxDailyLoss))
     return 'risk_cap'
   return 'none'
 }

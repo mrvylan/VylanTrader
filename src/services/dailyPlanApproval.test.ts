@@ -77,8 +77,34 @@ describe('dailyPlanApproval', () => {
     expect(committedPlanRisk(plans)).toBe(40)
   })
 
+  it('scopes slots and risk to dailyPlan.approvedPlans when provided', () => {
+    const d = dp({ approvedPlans: ['a'] })
+    const plans = [
+      plan({
+        id: 'a',
+        status: 'approved',
+        entry: 100,
+        stop: 95,
+        positionSize: 2,
+        riskPerShare: 5,
+        riskAmount: 10,
+      }),
+      plan({
+        id: 'b',
+        status: 'approved',
+        entry: 100,
+        stop: 95,
+        positionSize: 2,
+        riskPerShare: 5,
+        riskAmount: 10,
+      }),
+    ]
+    expect(countTradeSlotsUsed(plans, d)).toBe(1)
+    expect(committedPlanRisk(plans, d)).toBe(10)
+  })
+
   it('blocks approval when risk cap exceeded', () => {
-    const d = dp({ maxDailyLoss: 25 })
+    const d = dp({ maxDailyLoss: 25, approvedPlans: ['p1'] })
     const plans = [
       plan({
         status: 'approved',
@@ -101,7 +127,7 @@ describe('dailyPlanApproval', () => {
   })
 
   it('blocks when max trades reached', () => {
-    const d = dp({ maxTrades: 1 })
+    const d = dp({ maxTrades: 1, approvedPlans: ['p1'] })
     const plans = [plan({ status: 'approved' })]
     const next = plan({ id: 'p2' })
     expect(whyCannotApprove(d, plans, next)).toBe('max_trades')
@@ -133,12 +159,12 @@ describe('dailyPlanApproval', () => {
   })
 
   it('maps approval blocks to scan rejection codes', () => {
-    const d = dp({ maxTrades: 1 })
+    const d = dp({ maxTrades: 1, approvedPlans: ['p1'] })
     expect(
       approvalBlockingScanReasons(d, [plan({ status: 'approved' })], plan({ id: 'p2' })),
     ).toEqual(['max_trades_reached'])
 
-    const d2 = dp({ maxDailyLoss: 20 })
+    const d2 = dp({ maxDailyLoss: 20, approvedPlans: ['p1'] })
     expect(
       approvalBlockingScanReasons(
         d2,

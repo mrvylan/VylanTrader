@@ -435,6 +435,67 @@ export function TradingDeskProvider({
     )
   }, [])
 
+  const rejectPositionPlan = useCallback(
+    (positionId: string, reason?: string) => {
+      if (dailyPlanRef.current?.status === 'closed') return
+      const pos = positionsRef.current.find((p) => p.id === positionId)
+      if (!pos || pos.status !== 'open') return
+
+      const planId = pos.tradePlanId
+      const r = reason?.trim()
+      setPlanActionError(null)
+
+      setTradePlans((plans) => {
+        const next = plans.map((p) => {
+          if (p.id !== planId) return p
+          if (
+            p.status !== 'watching' &&
+            p.status !== 'approved' &&
+            p.status !== 'entered'
+          ) {
+            return p
+          }
+          return {
+            ...p,
+            status: 'rejected' as const,
+            notes: r ? r : p.notes,
+          }
+        })
+        tradePlansRef.current = next
+        return next
+      })
+
+      setDailyPlan((dp) =>
+        dp
+          ? {
+              ...dp,
+              approvedPlans: dp.approvedPlans.filter((x) => x !== planId),
+            }
+          : dp,
+      )
+
+      // Close the open position so it disappears from ActivePositions.
+      // We store reason in Position.notes as well (even though UI hides closed positions).
+      setPositions((ps) => {
+        const next = ps.map((p) =>
+          p.id === positionId && p.status === 'open'
+            ? {
+                ...p,
+                status: 'closed' as const,
+                closedAt: Date.now(),
+                notes: r ? r : p.notes,
+                realizedPnL: p.realizedPnL ?? 0,
+                realizedR: p.realizedR ?? null,
+              }
+            : p,
+        )
+        saveOpenPositions(next)
+        return next
+      })
+    },
+    [],
+  )
+
   const unapprovePlan = useCallback((id: string) => {
     if (dailyPlanRef.current?.status === 'closed') return
 
@@ -897,6 +958,10 @@ export function TradingDeskProvider({
     [],
   )
 
+  const clearPlanHistory = useCallback(() => {
+    setPlanHistory([])
+  }, [])
+
   const value = useMemo<TradingDeskValue>(
     () => ({
       settings,
@@ -911,11 +976,13 @@ export function TradingDeskProvider({
       journal,
       planHistory,
       reconcileTradePlan,
+      clearPlanHistory,
       planActionError,
       dismissPlanActionError,
       approvePlan,
       rejectPlan,
       unapprovePlan,
+      rejectPositionPlan,
       togglePlanAlert,
       updatePlan,
       createManualQuotePlan,
@@ -952,6 +1019,7 @@ export function TradingDeskProvider({
       journal,
       planHistory,
       reconcileTradePlan,
+      clearPlanHistory,
       planActionError,
       dismissPlanActionError,
       approvePlan,

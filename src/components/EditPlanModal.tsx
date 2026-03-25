@@ -2,10 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import type { TradePlan, TradePlanEditPatch } from '../domain/types'
 import {
   baseRiskInputFromEffective,
-  computeManualPlanInputs,
+  computeManualPlanInputsFromStop,
   defaultProfitRFromExpected,
   type ManualPlanProfitR,
-  type ManualPlanRiskMultiplier,
 } from '../services/manualPlanInputs'
 import { planMaxRiskDollars } from '../services/tradePlanMoney'
 import styles from './EditPlanModal.module.css'
@@ -31,46 +30,38 @@ export function EditPlanModal({
   onSave: (id: string, patch: TradePlanEditPatch) => void
 }) {
   const [entry, setEntry] = useState('')
-  const [shares, setShares] = useState('')
+  const [stop, setStop] = useState('')
   const [riskDollars, setRiskDollars] = useState('')
-  const [riskMultiplier, setRiskMultiplier] =
-    useState<ManualPlanRiskMultiplier>(3)
   const [profitR, setProfitR] = useState<ManualPlanProfitR>(3)
   const [comments, setComments] = useState('')
 
   useEffect(() => {
     if (!plan || !open) return
     setEntry(plan.entry.toFixed(4))
-    setShares(String(Math.max(1, plan.positionSize)))
+    setStop(plan.stop.toFixed(4))
     const maxRisk = planMaxRiskDollars(plan)
-    const base =
+    const effective =
       maxRisk > 0
         ? maxRisk
         : plan.riskPerShare > 0 && plan.positionSize > 0
           ? plan.riskPerShare * plan.positionSize
           : 0
-    const mult: ManualPlanRiskMultiplier = 3
-    setRiskMultiplier(mult)
     setRiskDollars(
-      base > 0 ? baseRiskInputFromEffective(base, mult) : '',
+      effective > 0 ? baseRiskInputFromEffective(effective, 3) : '',
     )
     setProfitR(defaultProfitRFromExpected(plan.expectedR))
     setComments(plan.notes ?? '')
   }, [plan, open])
 
-  const isShort = plan?.bias === 'bearish'
-
   const computed = useMemo(
     () =>
-      computeManualPlanInputs({
+      computeManualPlanInputsFromStop({
         entry,
-        shares,
+        stop,
         riskDollars,
-        riskMultiplier,
         profitR,
-        isShort: Boolean(isShort),
       }),
-    [entry, shares, riskDollars, riskMultiplier, profitR, isShort],
+    [entry, stop, riskDollars, profitR],
   )
 
   if (!open || !plan) return null
@@ -91,10 +82,15 @@ export function EditPlanModal({
           Plan inputs · {plan.ticker}
         </h2>
         <p className={styles.subtitle}>
-          {isShort ? 'Short' : 'Long'} · {plan.setupType}. Base risk ×{' '}
-          {riskMultiplier}x → effective $ ÷ shares → stop; target = entry ± (
-          {profitR} × stop distance).
+          Long · {plan.setupType}. Shares = floor(risk ÷ (entry − stop)); target
+          = entry + {profitR} × (entry − stop). Stop must be below entry.
         </p>
+        {plan.bias === 'bearish' && canEdit && (
+          <p className={styles.warn}>
+            Plan bias is short; this form sizes a long (stop below entry). Adjust
+            prices or use a new plan.
+          </p>
+        )}
         {!canEdit && (
           <p className={styles.warn}>
             Only watching or approved plans can be edited.
@@ -113,30 +109,29 @@ export function EditPlanModal({
             onChange={(e) => setEntry(e.target.value)}
           />
           <span className={styles.hint}>
-            Planned trade price; stop and target are measured from here.
+            Planned trade price; stop distance sets risk per share.
           </span>
         </label>
 
-        <div className={styles.sectionLabel}>2 · Size</div>
+        <div className={styles.sectionLabel}>2 · Stop</div>
         <label className={styles.field}>
-          Number of shares
+          Stop price
           <input
             className={styles.input}
             type="number"
-            min={1}
-            step={1}
-            value={shares}
+            step="any"
+            value={stop}
             disabled={!canEdit}
-            onChange={(e) => setShares(e.target.value)}
+            onChange={(e) => setStop(e.target.value)}
           />
           <span className={styles.hint}>
-            Used with base risk and multiplier below for effective $ at the stop.
+            Must be below entry. Risk per share = entry − stop.
           </span>
         </label>
 
-        <div className={styles.sectionLabel}>3 · Base risk ($)</div>
+        <div className={styles.sectionLabel}>3 · Risk ($)</div>
         <label className={styles.field}>
-          Base risk ($)
+          Dollars willing to risk
           <input
             className={styles.input}
             type="text"
@@ -148,35 +143,32 @@ export function EditPlanModal({
             placeholder="e.g. 40 or 1,250.50"
           />
           <span className={styles.hint}>
-            Multiplied below; effective dollars at the stop ÷ shares → stop
-            distance. Commas allowed.
+            Commas allowed. Shares use risk ÷ (entry − stop), floored to whole
+            shares.
           </span>
         </label>
 
-        <div className={styles.sectionLabel}>4 · Risk multiplier</div>
-        <label className={styles.field}>
-          Scale base risk
-          <select
-            className={styles.select}
-            value={riskMultiplier}
-            disabled={!canEdit}
-            onChange={(e) =>
-              setRiskMultiplier(
-                Number(e.target.value) as ManualPlanRiskMultiplier,
-              )
-            }
-          >
-            <option value={3}>3× — effective = base × 3</option>
-            <option value={5}>5× — effective = base × 5</option>
-            <option value={10}>10× — effective = base × 10</option>
-          </select>
-          <span className={styles.hint}>
-            Effective risk at stop = base × {riskMultiplier}. Summary uses the
-            effective amount.
-          </span>
-        </label>
+        <div className={styles.sharesCallout} aria-live="polite">
+          <div className={styles.sharesCalloutLabel}>Shares to purchase</div>
+          {computed.ok ? (
+            <>
+              <p className={styles.sharesCalloutValue}>
+                {computed.positionSize}
+              </p>
+              <p className={styles.sharesCalloutFormula}>
+                floor( {formatUsd(computed.riskBudgetDollars)} ÷{' '}
+                {formatUsd(computed.rps)} ) = <strong>{computed.positionSize}</strong>{' '}
+                shares — risk ÷ (entry − stop)
+              </p>
+            </>
+          ) : (
+            <p className={styles.sharesCalloutPending}>
+              Enter entry, stop below entry, and risk $ to see share count.
+            </p>
+          )}
+        </div>
 
-        <div className={styles.sectionLabel}>5 · Profit target (R-multiple)</div>
+        <div className={styles.sectionLabel}>4 · Profit target (R-multiple)</div>
         <label className={styles.field}>
           Target vs risk
           <select
@@ -187,16 +179,18 @@ export function EditPlanModal({
               setProfitR(Number(e.target.value) as ManualPlanProfitR)
             }
           >
-            <option value={3}>3R — target = entry {isShort ? '−' : '+'} 3 × (stop distance)</option>
+            <option value={3}>
+              3R — target = entry + 3 × (entry − stop)
+            </option>
             <option value={5}>5R</option>
             <option value={10}>10R</option>
           </select>
           <span className={styles.hint}>
-            One R = |entry − stop| per share. Reward distance = {profitR}× that.
+            One R = entry − stop per share. Reward distance = {profitR}× that.
           </span>
         </label>
 
-        <div className={styles.sectionLabel}>6 · Notes</div>
+        <div className={styles.sectionLabel}>5 · Notes</div>
         <label className={styles.field}>
           Comments
           <textarea
@@ -213,14 +207,8 @@ export function EditPlanModal({
           {computed.ok ? (
             <ul className={styles.summaryList}>
               <li>
-                <strong>Base risk</strong>: {formatUsd(computed.baseRiskDollars)}{' '}
-                × {computed.riskMultiplier}× →{' '}
-                <strong>effective</strong>{' '}
-                {formatUsd(computed.effectiveRiskDollars)} at stop
-              </li>
-              <li>
-                <strong>Risk / share</strong>: {formatUsd(computed.rps)} ←
-                effective ÷ shares
+                <strong>Risk / share</strong>: {formatUsd(computed.rps)} (entry
+                − stop)
               </li>
               <li>
                 <strong>Stop</strong>: {formatUsd(computed.stop)} (
@@ -229,10 +217,9 @@ export function EditPlanModal({
               <li>
                 <strong>Target</strong>: {formatUsd(computed.target)} (
                 {formatUsd(
-                  computed.rewardPerShare * Math.floor(Number(shares) || 0),
+                  computed.rewardPerShare * computed.positionSize,
                 )}{' '}
-                gross to
-                target, {computed.expectedR.toFixed(2)}R)
+                gross to target, {computed.expectedR.toFixed(2)}R)
               </li>
               <li>
                 <strong>Notional</strong> @ entry:{' '}
@@ -254,13 +241,12 @@ export function EditPlanModal({
             disabled={!canEdit || !computed.ok}
             onClick={() => {
               if (!computed.ok) return
-              const sh = Math.floor(Number(shares))
               onSave(plan.id, {
                 entry: Number(entry),
                 stop: computed.stop,
                 target: computed.target,
                 notes: comments.trim() || undefined,
-                positionSize: sh,
+                positionSize: computed.positionSize,
               })
               onClose()
             }}

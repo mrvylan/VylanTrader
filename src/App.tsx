@@ -12,6 +12,7 @@ import { RiskCard } from './components/RiskCard'
 import { SettingsModal } from './components/SettingsModal'
 import { EditPlanModal } from './components/EditPlanModal'
 import { ManualQuotePlanModal } from './components/ManualQuotePlanModal'
+import { MonthlyAggregatePanel } from './components/MonthlyAggregatePanel'
 import { PlanHistoryPanel } from './components/PlanHistoryPanel'
 import { ReconcilePlanModal } from './components/ReconcilePlanModal'
 import { TradeCard } from './components/TradeCard'
@@ -56,7 +57,6 @@ function Desk() {
     dismissPlanActionError,
     enterPlan,
     updatePositionStop,
-    takePartialPosition,
     updatePositionNotes,
     closePosition,
     deleteJournalEntry,
@@ -78,6 +78,8 @@ function Desk() {
     dataFallbackNotice,
     planHistory,
     reconcileTradePlan,
+    clearPlanHistory,
+    rejectPositionPlan,
   } = useTradingDesk()
 
   const metrics = useJournalMetrics()
@@ -99,7 +101,9 @@ function Desk() {
   const [quotePlanUi, setQuotePlanUi] = useState<
     null | { kind: 'create'; ticker: string } | { kind: 'edit'; planId: string }
   >(null)
-  const [deskView, setDeskView] = useState<'desk' | 'history'>('desk')
+  const [deskView, setDeskView] = useState<'desk' | 'history' | 'aggregate'>(
+    'desk',
+  )
   const [reconcilePlanId, setReconcilePlanId] = useState<string | null>(null)
   const onXFeedLoadEnabledChange = useCallback((enabled: boolean) => {
     saveXFeedLoadEnabled(enabled)
@@ -216,6 +220,7 @@ function Desk() {
         onOpenPrices={() => setPricesOpen(true)}
         deskView={deskView}
         onOpenHistory={() => setDeskView('history')}
+        onOpenAggregate={() => setDeskView('aggregate')}
         onOpenDesk={() => setDeskView('desk')}
       />
 
@@ -226,6 +231,14 @@ function Desk() {
           positions={positions}
           onBackToDesk={() => setDeskView('desk')}
           onReconcile={openReconcile}
+          onClearHistory={clearPlanHistory}
+        />
+      ) : null}
+
+      {deskView === 'aggregate' ? (
+        <MonthlyAggregatePanel
+          journal={journal}
+          onBackToDesk={() => setDeskView('desk')}
         />
       ) : null}
 
@@ -351,8 +364,8 @@ function Desk() {
         positions={positions}
         onClose={closePosition}
         onMoveStop={updatePositionStop}
-        onTakePartial={takePartialPosition}
         onUpdateNotes={updatePositionNotes}
+        onReject={rejectPositionPlan}
       />
 
       <div className={styles.bottomRow}>

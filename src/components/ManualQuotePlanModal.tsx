@@ -2,10 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import type { MarketTrend, TradePlan, TradePlanEditPatch } from '../domain/types'
 import {
   baseRiskInputFromEffective,
-  computeManualPlanInputs,
+  computeManualPlanInputsFromStop,
   defaultProfitRFromExpected,
   type ManualPlanProfitR,
-  type ManualPlanRiskMultiplier,
 } from '../services/manualPlanInputs'
 import { planMaxRiskDollars } from '../services/tradePlanMoney'
 import styles from './EditPlanModal.module.css'
@@ -26,7 +25,7 @@ export function ManualQuotePlanModal({
   plan,
   quoteLast,
   riskPerTrade,
-  marketTrend,
+  marketTrend: _marketTrend,
   onClose,
   onCreate,
   onSaveEdit,
@@ -45,15 +44,13 @@ export function ManualQuotePlanModal({
   ) => void
   onSaveEdit: (id: string, patch: TradePlanEditPatch) => void
 }) {
+  void _marketTrend
+
   const [entry, setEntry] = useState('')
-  const [shares, setShares] = useState('')
+  const [stop, setStop] = useState('')
   const [riskDollars, setRiskDollars] = useState('')
-  const [riskMultiplier, setRiskMultiplier] =
-    useState<ManualPlanRiskMultiplier>(3)
   const [profitR, setProfitR] = useState<ManualPlanProfitR>(3)
   const [comments, setComments] = useState('')
-  /** Long = bullish bias, short = bearish */
-  const [direction, setDirection] = useState<'long' | 'short'>('long')
 
   useEffect(() => {
     if (!open) return
@@ -61,52 +58,40 @@ export function ManualQuotePlanModal({
       const hint =
         quoteLast != null && Number.isFinite(quoteLast) ? quoteLast : null
       setEntry(hint != null ? String(hint) : '')
-      setShares('1')
-      const mult: ManualPlanRiskMultiplier = 3
-      setRiskMultiplier(mult)
-      setRiskDollars(
-        riskPerTrade > 0
-          ? baseRiskInputFromEffective(riskPerTrade, mult)
-          : '',
-      )
+      setStop('')
       setProfitR(3)
       setComments('')
-      setDirection(marketTrend === 'bearish' ? 'short' : 'long')
+      setRiskDollars(
+        riskPerTrade > 0 ? baseRiskInputFromEffective(riskPerTrade, 3) : '',
+      )
       return
     }
     if (!plan) return
     setEntry(plan.entry.toFixed(4))
-    setShares(String(Math.max(1, plan.positionSize)))
+    setStop(plan.stop.toFixed(4))
     const maxRisk = planMaxRiskDollars(plan)
-    const base =
+    const effective =
       maxRisk > 0
         ? maxRisk
         : plan.riskPerShare > 0 && plan.positionSize > 0
           ? plan.riskPerShare * plan.positionSize
           : 0
-    const mult: ManualPlanRiskMultiplier = 3
-    setRiskMultiplier(mult)
     setRiskDollars(
-      base > 0 ? baseRiskInputFromEffective(base, mult) : '',
+      effective > 0 ? baseRiskInputFromEffective(effective, 3) : '',
     )
     setProfitR(defaultProfitRFromExpected(plan.expectedR))
     setComments(plan.notes ?? '')
-  }, [open, mode, plan, quoteLast, riskPerTrade, marketTrend])
-
-  const isShort =
-    mode === 'create' ? direction === 'short' : plan?.bias === 'bearish'
+  }, [open, mode, plan, quoteLast, riskPerTrade])
 
   const computed = useMemo(
     () =>
-      computeManualPlanInputs({
+      computeManualPlanInputsFromStop({
         entry,
-        shares,
+        stop,
         riskDollars,
-        riskMultiplier,
         profitR,
-        isShort: Boolean(isShort),
       }),
-    [entry, shares, riskDollars, riskMultiplier, profitR, isShort],
+    [entry, stop, riskDollars, profitR],
   )
 
   if (!open) return null
@@ -135,41 +120,18 @@ export function ManualQuotePlanModal({
           {title}
         </h2>
         <p className={styles.subtitle}>
-          {isShort ? 'Short' : 'Long'} · {setupLabel}. Base risk × {riskMultiplier}
-          × → effective ÷ shares → stop; target = entry {isShort ? '−' : '+'}{' '}
-          ({profitR} × stop distance).
+          Long · {setupLabel}. Shares = floor(risk ÷ (entry − stop)); target =
+          entry + {profitR} × (entry − stop). Stop below entry.
         </p>
         {mode === 'edit' && !canSubmit && (
           <p className={styles.warn}>
             Only watching or approved plans can be edited.
           </p>
         )}
-
-        {mode === 'create' && (
-          <>
-            <div className={styles.sectionLabel}>0 · Direction</div>
-            <fieldset className={styles.fieldset} disabled={!canSubmit}>
-              <legend className={styles.legend}>Side</legend>
-              <label className={styles.radioRow}>
-                <input
-                  type="radio"
-                  name="dir"
-                  checked={direction === 'long'}
-                  onChange={() => setDirection('long')}
-                />
-                Long
-              </label>
-              <label className={styles.radioRow}>
-                <input
-                  type="radio"
-                  name="dir"
-                  checked={direction === 'short'}
-                  onChange={() => setDirection('short')}
-                />
-                Short
-              </label>
-            </fieldset>
-          </>
+        {mode === 'edit' && plan?.bias === 'bearish' && canSubmit && (
+          <p className={styles.warn}>
+            Plan bias is short; this form sizes a long (stop below entry).
+          </p>
         )}
 
         <div className={styles.sectionLabel}>1 · Entry</div>
@@ -184,30 +146,29 @@ export function ManualQuotePlanModal({
             onChange={(e) => setEntry(e.target.value)}
           />
           <span className={styles.hint}>
-            Planned trade price; stop and target are measured from here.
+            Planned trade price; shares use entry − stop in the denominator.
           </span>
         </label>
 
-        <div className={styles.sectionLabel}>2 · Size</div>
+        <div className={styles.sectionLabel}>2 · Stop</div>
         <label className={styles.field}>
-          Number of shares
+          Stop price
           <input
             className={styles.input}
             type="number"
-            min={1}
-            step={1}
-            value={shares}
+            step="any"
+            value={stop}
             disabled={!canSubmit}
-            onChange={(e) => setShares(e.target.value)}
+            onChange={(e) => setStop(e.target.value)}
           />
           <span className={styles.hint}>
-            Used with base risk and multiplier for effective $ at the stop.
+            Must be below entry. Risk per share = entry − stop.
           </span>
         </label>
 
-        <div className={styles.sectionLabel}>3 · Base risk ($)</div>
+        <div className={styles.sectionLabel}>3 · Risk ($)</div>
         <label className={styles.field}>
-          Base risk ($)
+          Dollars willing to risk
           <input
             className={styles.input}
             type="text"
@@ -219,35 +180,31 @@ export function ManualQuotePlanModal({
             placeholder="e.g. 40 or 1,250.50"
           />
           <span className={styles.hint}>
-            Multiplied next; effective dollars at stop ÷ shares → stop distance.
-            Commas ok.
+            Commas ok. Shares = floor(risk ÷ (entry − stop)).
           </span>
         </label>
 
-        <div className={styles.sectionLabel}>4 · Risk multiplier</div>
-        <label className={styles.field}>
-          Scale base risk
-          <select
-            className={styles.select}
-            value={riskMultiplier}
-            disabled={!canSubmit}
-            onChange={(e) =>
-              setRiskMultiplier(
-                Number(e.target.value) as ManualPlanRiskMultiplier,
-              )
-            }
-          >
-            <option value={3}>3× — effective = base × 3</option>
-            <option value={5}>5× — effective = base × 5</option>
-            <option value={10}>10× — effective = base × 10</option>
-          </select>
-          <span className={styles.hint}>
-            Effective risk at stop = base × {riskMultiplier}. Summary uses the
-            effective amount.
-          </span>
-        </label>
+        <div className={styles.sharesCallout} aria-live="polite">
+          <div className={styles.sharesCalloutLabel}>Shares to purchase</div>
+          {computed.ok ? (
+            <>
+              <p className={styles.sharesCalloutValue}>
+                {computed.positionSize}
+              </p>
+              <p className={styles.sharesCalloutFormula}>
+                floor( {formatUsd(computed.riskBudgetDollars)} ÷{' '}
+                {formatUsd(computed.rps)} ) = <strong>{computed.positionSize}</strong>{' '}
+                shares — risk ÷ (entry − stop)
+              </p>
+            </>
+          ) : (
+            <p className={styles.sharesCalloutPending}>
+              Enter entry, stop below entry, and risk $ to see share count.
+            </p>
+          )}
+        </div>
 
-        <div className={styles.sectionLabel}>5 · Profit target (R-multiple)</div>
+        <div className={styles.sectionLabel}>4 · Profit target (R-multiple)</div>
         <label className={styles.field}>
           Target vs risk
           <select
@@ -258,18 +215,16 @@ export function ManualQuotePlanModal({
               setProfitR(Number(e.target.value) as ManualPlanProfitR)
             }
           >
-            <option value={3}>
-              3R — target = entry {isShort ? '−' : '+'} 3 × (stop distance)
-            </option>
+            <option value={3}>3R — target = entry + 3 × (entry − stop)</option>
             <option value={5}>5R</option>
             <option value={10}>10R</option>
           </select>
           <span className={styles.hint}>
-            One R = |entry − stop| per share. Reward distance = {profitR}× that.
+            One R = entry − stop per share. Reward distance = {profitR}× that.
           </span>
         </label>
 
-        <div className={styles.sectionLabel}>6 · Notes</div>
+        <div className={styles.sectionLabel}>5 · Notes</div>
         <label className={styles.field}>
           Comments
           <textarea
@@ -286,14 +241,8 @@ export function ManualQuotePlanModal({
           {computed.ok ? (
             <ul className={styles.summaryList}>
               <li>
-                <strong>Base risk</strong>: {formatUsd(computed.baseRiskDollars)}{' '}
-                × {computed.riskMultiplier}× →{' '}
-                <strong>effective</strong>{' '}
-                {formatUsd(computed.effectiveRiskDollars)} at stop
-              </li>
-              <li>
-                <strong>Risk / share</strong>: {formatUsd(computed.rps)} ←
-                effective ÷ shares
+                <strong>Risk / share</strong>: {formatUsd(computed.rps)} (entry
+                − stop)
               </li>
               <li>
                 <strong>Stop</strong>: {formatUsd(computed.stop)} (
@@ -302,7 +251,7 @@ export function ManualQuotePlanModal({
               <li>
                 <strong>Target</strong>: {formatUsd(computed.target)} (
                 {formatUsd(
-                  computed.rewardPerShare * Math.floor(Number(shares) || 0),
+                  computed.rewardPerShare * computed.positionSize,
                 )}{' '}
                 gross to target, {computed.expectedR.toFixed(2)}R)
               </li>
@@ -326,17 +275,15 @@ export function ManualQuotePlanModal({
             disabled={!canSubmit || !computed.ok}
             onClick={() => {
               if (!computed.ok) return
-              const sh = Math.floor(Number(shares))
               const patch: TradePlanEditPatch = {
                 entry: Number(entry),
                 stop: computed.stop,
                 target: computed.target,
                 notes: comments.trim() || undefined,
-                positionSize: sh,
+                positionSize: computed.positionSize,
               }
               if (mode === 'create') {
-                const bias: MarketTrend = direction === 'short' ? 'bearish' : 'bullish'
-                onCreate(patch, bias)
+                onCreate(patch, 'bullish')
               } else if (plan) {
                 onSaveEdit(plan.id, patch)
               }

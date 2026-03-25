@@ -24,12 +24,15 @@ export function PlanHistoryPanel({
   positions,
   onBackToDesk,
   onReconcile,
+  onClearHistory,
 }: {
   planHistory: PlanHistoryEntry[]
   tradePlans: TradePlan[]
   positions: Position[]
   onBackToDesk: () => void
   onReconcile: (planId: string) => void
+  /** Dev: wipe reconciled rows from local storage (plans / journal unchanged). */
+  onClearHistory: () => void
 }) {
   const [tickerFilter, setTickerFilter] = useState('')
 
@@ -59,9 +62,33 @@ export function PlanHistoryPanel({
             everything else.
           </p>
         </div>
-        <button type="button" className={styles.backBtn} onClick={onBackToDesk}>
-          Trading desk
-        </button>
+        <div className={styles.headActions}>
+          <button
+            type="button"
+            className={styles.clearBtn}
+            disabled={planHistory.length === 0}
+            title={
+              planHistory.length === 0
+                ? 'No reconciled rows to remove'
+                : 'Remove all rows from the Reconciled table (local only)'
+            }
+            onClick={() => {
+              if (
+                !window.confirm(
+                  'Clear all plan history data? This removes reconciled rows from this browser only. Trade plans and the journal are not changed.',
+                )
+              ) {
+                return
+              }
+              onClearHistory()
+            }}
+          >
+            Clear history
+          </button>
+          <button type="button" className={styles.backBtn} onClick={onBackToDesk}>
+            Trading desk
+          </button>
+        </div>
       </div>
 
       <div>

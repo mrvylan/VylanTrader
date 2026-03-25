@@ -108,7 +108,8 @@ export function withPartialShares(p: Position, newShares: number): Position {
 export function migratePositionRecord(raw: unknown): Position | null {
   if (typeof raw !== 'object' || raw == null) return null
   const o = raw as Record<string, unknown>
-  if (o.status !== 'open') return null
+  if (o.status !== 'open' && o.status !== 'closed') return null
+  const status = o.status === 'closed' ? 'closed' : 'open'
 
   const entryPrice = Number(
     o.entryPrice != null ? o.entryPrice : o.entry,
@@ -169,8 +170,9 @@ export function migratePositionRecord(raw: unknown): Position | null {
     unrealizedR,
     realizedPnL: 0,
     realizedR: null,
-    status: 'open',
+    status,
     openedAt: Number(o.openedAt) || Date.now(),
+    closedAt: status === 'closed' ? Number(o.closedAt) || Date.now() : undefined,
     quoteIsSimulated: o.quoteIsSimulated === true,
     chartEntryDataUrl:
       typeof o.chartEntryDataUrl === 'string' ? o.chartEntryDataUrl : undefined,

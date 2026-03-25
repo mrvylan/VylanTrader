@@ -29,8 +29,8 @@ export function ActivePositions({
   positions,
   onClose,
   onMoveStop,
-  onTakePartial,
   onUpdateNotes,
+  onReject,
 }: {
   positions: Position[]
   onClose: (
@@ -40,8 +40,8 @@ export function ActivePositions({
     notes?: string,
   ) => Promise<void>
   onMoveStop?: (positionId: string, stop: number) => void
-  onTakePartial?: (positionId: string) => void
   onUpdateNotes?: (positionId: string, notes: string) => void
+  onReject?: (positionId: string, reason?: string) => void
 }) {
   const open = positions.filter((p) => p.status === 'open')
   const [closingId, setClosingId] = useState<string | null>(null)
@@ -142,13 +142,6 @@ export function ActivePositions({
                       <button
                         type="button"
                         className={styles.miniBtn}
-                        onClick={() => onTakePartial?.(p.id)}
-                      >
-                        Partial
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.miniBtn}
                         onClick={() => {
                           const raw = window.prompt(
                             'Position notes',
@@ -159,6 +152,22 @@ export function ActivePositions({
                         }}
                       >
                         Note
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.miniBtn} ${styles.rejectBtn}`}
+                        onClick={() => {
+                          // If user rejects while the close dialog is open, dismiss it.
+                          setClosingId(null)
+                          const raw = window.prompt(
+                            'Reject reason (optional)',
+                            p.notes ?? '',
+                          )
+                          if (raw == null) return
+                          onReject?.(p.id, raw.trim() || undefined)
+                        }}
+                      >
+                        Reject
                       </button>
                       <button
                         type="button"

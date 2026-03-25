@@ -29,12 +29,21 @@ export interface TradingDeskValue {
   /** Master plan outcome history (manual reconcile rows; v1 excludes auto position_close mirror). */
   planHistory: PlanHistoryEntry[]
   reconcileTradePlan: (planId: string, payload: PlanReconcilePayload) => void
+  /** Wipes persisted plan history (dev / reset). Does not change trade plans or journal. */
+  clearPlanHistory: () => void
   /** Last error from create plan / plan actions (shown in UI). */
   planActionError: string | null
   dismissPlanActionError: () => void
   approvePlan: (id: string) => void
   rejectPlan: (id: string) => void
   unapprovePlan: (id: string) => void
+  /**
+   * Reject an *active* plan via its open position.
+   * - Sets the related TradePlan status to `rejected` (even if it was `entered`).
+   * - Closes/removes the open position so it disappears from ActivePositions.
+   * - Does not write to the journal or plan history.
+   */
+  rejectPositionPlan: (positionId: string, reason?: string) => void
   togglePlanAlert: (id: string) => void
   updatePlan: (id: string, patch: TradePlanEditPatch) => void
   /** Manual plan from watchlist quotes UI. */

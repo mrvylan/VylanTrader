@@ -92,8 +92,8 @@ export function DailyPlanPanel({
       .filter((p) => p.status === 'approved' || p.status === 'entered')
   }, [dailyPlan, tradePlans])
 
-  const totalRisk = committedPlanRisk(tradePlans)
-  const slotsUsed = countTradeSlotsUsed(tradePlans)
+  const totalRisk = committedPlanRisk(tradePlans, dailyPlan)
+  const slotsUsed = countTradeSlotsUsed(tradePlans, dailyPlan)
 
   const riskLimitMsg = useMemo(() => {
     if (!dailyPlan || candidates.length === 0) return null

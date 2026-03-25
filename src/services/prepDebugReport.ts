@@ -171,10 +171,11 @@ export function buildPrepDebugReport(input: {
     if (plan != null && dailyPlan != null && dailyPlan.status !== 'closed') {
       dailyRiskCapOk = !wouldExceedDailyLoss(
         tradePlans,
+        dailyPlan,
         plan,
         dailyPlan.maxDailyLoss,
       )
-      maxTradesOk = canApproveMoreTrades(tradePlans, dailyPlan.maxTrades)
+      maxTradesOk = canApproveMoreTrades(tradePlans, dailyPlan, dailyPlan.maxTrades)
     }
 
     const pipeline: PrepTickerPipelineDebug = {

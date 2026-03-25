@@ -1,3 +1,5 @@
+import { sharesFromRisk } from './planner'
+
 export type ManualPlanProfitR = 3 | 5 | 10
 
 /** Scales base risk $ before stop / target math (same choices as profit R). */
@@ -26,24 +28,24 @@ export type ManualPlanComputed =
       ok: true
       stop: number
       target: number
+      /** entry − stop per share (long; risk distance). */
       rps: number
       maxRisk: number
       notional: number
       rewardPerShare: number
       expectedR: number
-      baseRiskDollars: number
-      riskMultiplier: ManualPlanRiskMultiplier
-      effectiveRiskDollars: number
+      positionSize: number
+      /** Dollars the user entered as risk budget (before share floor). */
+      riskBudgetDollars: number
     }
 
-/** Seed base risk field when reopening a plan (effective $ ÷ default multiplier). */
+/** Seed risk $ field when reopening a plan (effective max loss at stop). */
 export function baseRiskInputFromEffective(
   effectiveDollars: number,
-  multiplier: ManualPlanRiskMultiplier,
+  _multiplier: ManualPlanRiskMultiplier,
 ): string {
   if (!(effectiveDollars > 0) || !Number.isFinite(effectiveDollars)) return ''
-  const b = effectiveDollars / multiplier
-  const rounded = Math.round(b * 100) / 100
+  const rounded = Math.round(effectiveDollars * 100) / 100
   return String(rounded)
 }
 
@@ -54,67 +56,65 @@ export function parseRiskDollarsInput(raw: string): number {
   return Number(trimmed)
 }
 
-export function computeManualPlanInputs(params: {
+/**
+ * Long-only: stop &lt; entry. Shares = floor(risk ÷ (entry − stop)).
+ * Target = entry + profitR × (entry − stop).
+ */
+export function computeManualPlanInputsFromStop(params: {
   entry: string
-  shares: string
+  stop: string
   riskDollars: string
-  riskMultiplier: ManualPlanRiskMultiplier
   profitR: ManualPlanProfitR
-  isShort: boolean
 }): ManualPlanComputed {
   const e = Number(params.entry)
-  const sh = Math.floor(Number(params.shares))
-  const baseRisk = parseRiskDollarsInput(params.riskDollars)
-  const mult = params.riskMultiplier
-  if (
-    !Number.isFinite(e) ||
-    !Number.isFinite(sh) ||
-    sh < 1 ||
-    !Number.isFinite(baseRisk) ||
-    baseRisk <= 0
-  ) {
+  const s = Number(params.stop)
+  const riskBudget = parseRiskDollarsInput(params.riskDollars)
+  if (!Number.isFinite(e) || !Number.isFinite(s)) {
+    return { ok: false, error: 'Enter valid entry and stop prices.' }
+  }
+  if (!Number.isFinite(riskBudget) || riskBudget <= 0) {
+    return {
+      ok: false,
+      error: 'Enter a positive dollar amount you are willing to risk.',
+    }
+  }
+  if (!(s < e)) {
+    return {
+      ok: false,
+      error: 'Stop must be below entry (long). Risk per share = entry − stop.',
+    }
+  }
+
+  const rps = e - s
+  if (!Number.isFinite(rps) || rps <= 0) {
+    return { ok: false, error: 'Entry and stop cannot be equal.' }
+  }
+
+  const sh = sharesFromRisk(riskBudget, e, s)
+  if (sh == null) {
     return {
       ok: false,
       error:
-        'Enter entry, at least 1 share, and positive base risk ($).',
+        'Risk $ is too small for this entry–stop distance (need at least 1 share).',
     }
   }
-  const effectiveRisk = baseRisk * mult
-  if (!Number.isFinite(effectiveRisk) || effectiveRisk <= 0) {
-    return { ok: false, error: 'Invalid effective risk after multiplier.' }
+
+  const stop = s
+  const target = e + params.profitR * rps
+  if (!Number.isFinite(target)) {
+    return { ok: false, error: 'Invalid target.' }
   }
-  const rps = effectiveRisk / sh
-  if (!Number.isFinite(rps) || rps <= 0) {
-    return { ok: false, error: 'Invalid risk per share.' }
-  }
-  const stop = params.isShort ? e + rps : e - rps
-  const target = params.isShort
-    ? e - params.profitR * rps
-    : e + params.profitR * rps
-  if (!Number.isFinite(stop) || !Number.isFinite(target)) {
-    return { ok: false, error: 'Invalid stop or target.' }
-  }
-  if (!params.isShort) {
-    if (!(stop < e && e < target)) {
-      return {
-        ok: false,
-        error:
-          'Long: stop must be below entry and target above entry. Adjust base risk, multiplier, shares, or entry.',
-      }
-    }
-  } else {
-    if (!(target < e && e < stop)) {
-      return {
-        ok: false,
-        error:
-          'Short: target below entry and stop above entry. Adjust base risk, multiplier, shares, or entry.',
-      }
+  if (!(stop < e && e < target)) {
+    return {
+      ok: false,
+      error: 'Target must be above entry. Try a different profit R.',
     }
   }
-  const maxRisk = sh * rps
-  const rewardPerShare = params.isShort ? e - target : target - e
+
+  const maxRisk = Math.round(sh * rps * 100) / 100
+  const rewardPerShare = target - e
   const expectedR = rewardPerShare / rps
-  const notional = sh * e
+  const notional = Math.round(sh * e * 100) / 100
   return {
     ok: true,
     stop,
@@ -124,8 +124,7 @@ export function computeManualPlanInputs(params: {
     notional,
     rewardPerShare,
     expectedR,
-    baseRiskDollars: baseRisk,
-    riskMultiplier: mult,
-    effectiveRiskDollars: effectiveRisk,
+    positionSize: sh,
+    riskBudgetDollars: riskBudget,
   }
 }
