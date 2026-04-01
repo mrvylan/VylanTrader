@@ -1,14 +1,15 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import type { XFeedResponse } from './services/xFeed'
+import { AccountCashPieCard } from './components/AccountCashPieCard'
 import { ActivePositions } from './components/ActivePositions'
 import { DailyPlanPanel } from './components/DailyPlanPanel'
 import { DeskHeader } from './components/DeskHeader'
+import { DailyScanPanel } from './components/DailyScanPanel'
 import { EditDailyPlanModal } from './components/EditDailyPlanModal'
 import { JournalMini } from './components/JournalMini'
 import { JournalModal } from './components/JournalModal'
 import { PricesModal } from './components/PricesModal'
 import { MarketCard } from './components/MarketCard'
-import { RiskCard } from './components/RiskCard'
 import { SettingsModal } from './components/SettingsModal'
 import { EditPlanModal } from './components/EditPlanModal'
 import { ManualQuotePlanModal } from './components/ManualQuotePlanModal'
@@ -16,6 +17,7 @@ import { MonthlyAggregatePanel } from './components/MonthlyAggregatePanel'
 import { PlanHistoryPanel } from './components/PlanHistoryPanel'
 import { ReconcilePlanModal } from './components/ReconcilePlanModal'
 import { TradeCard } from './components/TradeCard'
+import { WatchlistChartModal } from './components/WatchlistChartModal'
 import { WatchlistSetupDrawer } from './components/WatchlistSetupDrawer'
 import { WatchlistQuotesCard } from './components/WatchlistQuotesCard'
 import { WatchlistTable } from './components/WatchlistTable'
@@ -33,7 +35,6 @@ import {
 import { TradingDeskProvider } from './state/TradingDeskProvider'
 import {
   useJournalMetrics,
-  useRiskPanelData,
   useTradingDesk,
 } from './state/tradingDeskHooks'
 import styles from './App.module.css'
@@ -52,6 +53,7 @@ function Desk() {
     togglePlanAlert,
     updatePlan,
     createManualQuotePlan,
+    deleteTradePlan,
     createPlanFromScan,
     planActionError,
     dismissPlanActionError,
@@ -83,7 +85,6 @@ function Desk() {
   } = useTradingDesk()
 
   const metrics = useJournalMetrics()
-  const risk = useRiskPanelData()
 
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsResetToken, setSettingsResetToken] = useState(0)
@@ -105,6 +106,9 @@ function Desk() {
     'desk',
   )
   const [reconcilePlanId, setReconcilePlanId] = useState<string | null>(null)
+  const [executionChartTicker, setExecutionChartTicker] = useState<string | null>(
+    null,
+  )
   const onXFeedLoadEnabledChange = useCallback((enabled: boolean) => {
     saveXFeedLoadEnabled(enabled)
     setXFeedLoadEnabled(enabled)
@@ -293,8 +297,14 @@ function Desk() {
           onEditManualPlan={(planId) =>
             setQuotePlanUi({ kind: 'edit', planId })
           }
+          onDeleteManualPlan={deleteTradePlan}
         />
       </div>
+      <DailyScanPanel
+        watchlist={watchlist}
+        quotes={lastQuotes}
+        lastPriceRefreshAt={lastPriceRefreshAt}
+      />
 
       <DailyPlanPanel
         dailyPlan={dailyPlan}
@@ -344,6 +354,8 @@ function Desk() {
                 <TradeCard
                   key={t.id}
                   trade={t}
+                  lastPrice={lastPrices[t.ticker]}
+                  onOpenChart={(ticker) => setExecutionChartTicker(ticker)}
                   hideApprovalActions
                   onEnter={handleEnterPlan}
                   onEdit={(id) => setEditPlanId(id)}
@@ -360,21 +372,23 @@ function Desk() {
         </div>
       </section>
 
-      <ActivePositions
-        positions={positions}
-        onClose={closePosition}
-        onMoveStop={updatePositionStop}
-        onUpdateNotes={updatePositionNotes}
-        onReject={rejectPositionPlan}
-      />
+      <div className={styles.positionsCashRow}>
+        <ActivePositions
+          embedded
+          positions={positions}
+          onClose={closePosition}
+          onMoveStop={updatePositionStop}
+          onUpdateNotes={updatePositionNotes}
+          onReject={rejectPositionPlan}
+        />
+        <AccountCashPieCard
+          accountSize={settings.accountSize}
+          positions={positions}
+        />
+      </div>
 
-      <div className={styles.bottomRow}>
-        <div className={styles.cellRisk}>
-          <RiskCard data={risk} />
-        </div>
-        <div className={styles.cellJournal}>
-          <JournalMini metrics={metrics} />
-        </div>
+      <div className={styles.cellJournalWide}>
+        <JournalMini metrics={metrics} />
       </div>
       </Fragment>
       ) : null}
@@ -407,6 +421,11 @@ function Desk() {
         lastPriceRefreshAt={lastPriceRefreshAt}
         onClose={() => setPricesOpen(false)}
         onRefresh={refreshPrices}
+      />
+      <WatchlistChartModal
+        open={executionChartTicker != null}
+        ticker={executionChartTicker}
+        onClose={() => setExecutionChartTicker(null)}
       />
 
       <WatchlistSetupDrawer

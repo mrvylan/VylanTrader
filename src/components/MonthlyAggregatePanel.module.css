@@ -72,6 +72,53 @@
   color: #e6eaf0;
 }
 
+.curveHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.curveTabs {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.curveTab {
+  font-family: inherit;
+  font-size: 12px;
+  border-radius: 999px;
+  border: 1px solid #334155;
+  background: #10141c;
+  color: #94a3b8;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.curveTabActive {
+  font-family: inherit;
+  font-size: 12px;
+  border-radius: 999px;
+  border: 1px solid #3b82f6;
+  background: #10243f;
+  color: #dbeafe;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.curveCard {
+  background: #0f1219;
+  border: 1px solid #1f2933;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.curveChart {
+  width: 100%;
+  height: 320px;
+}
+
 .blockTitle {
   margin: 0 0 10px;
   font-size: 12px;

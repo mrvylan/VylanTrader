@@ -6,6 +6,7 @@ import {
   computeRealizedR,
   computeUnrealizedPnLLong,
   computeUnrealizedR,
+  deployedNotionalOpenLongs,
 } from './positionMath'
 
 describe('positionMath', () => {
@@ -41,5 +42,15 @@ describe('positionMath', () => {
     expect(computeInitialRiskDollars(2, 5)).toBe(10)
     expect(computeInitialRiskDollars(0, 5)).toBeNull()
     expect(computeInitialRiskDollars(2, 0)).toBeNull()
+  })
+
+  it('deployedNotionalOpenLongs', () => {
+    expect(deployedNotionalOpenLongs([])).toBe(0)
+    expect(
+      deployedNotionalOpenLongs([
+        { status: 'open', entryPrice: 10, shares: 100 },
+        { status: 'closed', entryPrice: 5, shares: 200 },
+      ]),
+    ).toBe(1000)
   })
 })

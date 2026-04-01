@@ -27,6 +27,8 @@ const statusLabel: Record<TradePlan['status'], string> = {
 
 export function TradeCard({
   trade,
+  lastPrice,
+  onOpenChart,
   onApprove,
   onReject,
   onEnter,
@@ -37,6 +39,8 @@ export function TradeCard({
   hideApprovalActions,
 }: {
   trade: TradePlan
+  lastPrice?: number
+  onOpenChart?: (ticker: string) => void
   onApprove?: (id: string) => void
   onReject?: (id: string) => void
   onEnter?: (id: string) => void
@@ -78,6 +82,28 @@ export function TradeCard({
   const maxRisk = planMaxRiskDollars(trade)
   const notional = planNotionalAtEntry(trade)
   const rewardToTarget = planRewardToTargetDollars(trade)
+  const hasLast = lastPrice != null && Number.isFinite(lastPrice)
+  const toStop =
+    hasLast ? Math.round((lastPrice - trade.stop) * 100) / 100 : null
+  const toTarget =
+    hasLast ? Math.round((trade.target - lastPrice) * 100) / 100 : null
+  const liveR =
+    hasLast && rps > 0
+      ? Math.round(((lastPrice - trade.entry) / rps) * 100) / 100
+      : null
+  const stopDistanceR =
+    hasLast && rps > 0
+      ? Math.round(((lastPrice - trade.stop) / rps) * 100) / 100
+      : null
+  const targetDistanceR =
+    hasLast && rps > 0
+      ? Math.round(((trade.target - lastPrice) / rps) * 100) / 100
+      : null
+  const atOrPastStop = stopDistanceR != null && stopDistanceR <= 0
+  const nearStop = stopDistanceR != null && stopDistanceR > 0 && stopDistanceR <= 0.25
+  const atOrPastTarget = targetDistanceR != null && targetDistanceR <= 0
+  const nearTarget =
+    targetDistanceR != null && targetDistanceR > 0 && targetDistanceR <= 0.5
 
   return (
     <article className={styles.card} aria-expanded={expanded}>
@@ -122,8 +148,8 @@ export function TradeCard({
             <dd>{trade.positionSize}</dd>
           </div>
           <div className={styles.metric}>
-            <dt>Score</dt>
-            <dd>{trade.score != null ? trade.score.toFixed(0) : '—'}</dd>
+            <dt>Last</dt>
+            <dd>{hasLast ? formatUsd(lastPrice) : '—'}</dd>
           </div>
         </dl>
 
@@ -141,6 +167,70 @@ export function TradeCard({
                 {rewardToTarget >= 0 ? '+' : ''}
                 {formatUsd(rewardToTarget)}
               </strong>
+            </span>
+          )}
+          <span className={styles.rr}>
+            To stop{' '}
+            <strong
+              className={
+                toStop == null
+                  ? undefined
+                  : toStop <= 0
+                    ? styles.warnVal
+                    : styles.goodVal
+              }
+            >
+              {toStop == null ? '—' : formatUsd(toStop)}
+            </strong>
+          </span>
+          <span className={styles.rr}>
+            Live R{' '}
+            <strong
+              className={
+                liveR == null
+                  ? undefined
+                  : liveR < 0
+                    ? styles.warnVal
+                    : styles.goodVal
+              }
+            >
+              {liveR == null ? '—' : liveR.toFixed(2)}
+            </strong>
+          </span>
+          <span className={styles.rr}>
+            To target / sh{' '}
+            <strong
+              className={
+                toTarget == null
+                  ? undefined
+                  : toTarget <= 0
+                    ? styles.goodVal
+                    : undefined
+              }
+            >
+              {toTarget == null ? '—' : formatUsd(toTarget)}
+            </strong>
+          </span>
+        </div>
+        <div className={styles.signalBadges}>
+          {atOrPastStop && (
+            <span className={`${styles.signal} ${styles.signalWarn}`}>
+              At/Past stop
+            </span>
+          )}
+          {!atOrPastStop && nearStop && (
+            <span className={`${styles.signal} ${styles.signalWarn}`}>
+              Near stop ({stopDistanceR?.toFixed(2)}R)
+            </span>
+          )}
+          {atOrPastTarget && (
+            <span className={`${styles.signal} ${styles.signalGood}`}>
+              At/Past target
+            </span>
+          )}
+          {!atOrPastTarget && nearTarget && (
+            <span className={`${styles.signal} ${styles.signalGood}`}>
+              Near target ({targetDistanceR?.toFixed(2)}R)
             </span>
           )}
         </div>
@@ -191,6 +281,16 @@ export function TradeCard({
             }}
           >
             Edit
+          </button>
+          <button
+            type="button"
+            className={styles.secondaryBtn}
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpenChart?.(trade.ticker)
+            }}
+          >
+            Chart
           </button>
           <button
             type="button"

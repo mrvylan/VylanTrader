@@ -49,3 +49,18 @@ export function computeRealizedR(
   if (initialRiskDollars <= 0) return null
   return Math.round((realizedPnL / initialRiskDollars) * 10000) / 10000
 }
+
+/** Capital tied up in open longs: Σ entry × shares. */
+export function deployedNotionalOpenLongs(
+  positions: ReadonlyArray<{
+    status: string
+    entryPrice: number
+    shares: number
+  }>,
+): number {
+  return Math.round(
+    positions
+      .filter((p) => p.status === 'open')
+      .reduce((s, p) => s + p.entryPrice * p.shares, 0) * 100,
+  ) / 100
+}

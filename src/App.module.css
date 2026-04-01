@@ -84,16 +84,22 @@
   grid-column: span 12;
 }
 
-.bottomRow {
-  display: contents;
+.cellJournalWide {
+  grid-column: span 12;
 }
 
-.cellRisk {
-  grid-column: span 6;
+.positionsCashRow {
+  grid-column: span 12;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 300px);
+  gap: 24px;
+  align-items: stretch;
 }
 
-.cellJournal {
-  grid-column: span 6;
+@media (max-width: 1100px) {
+  .positionsCashRow {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 1200px) {
@@ -104,8 +110,7 @@
   .cellMarket,
   .cellMarketWide,
   .cellWatchlist,
-  .cellRisk,
-  .cellJournal {
+  .cellJournalWide {
     grid-column: span 12;
   }
 

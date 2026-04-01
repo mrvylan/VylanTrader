@@ -1,8 +1,6 @@
 import { useMemo } from 'react'
 import type { DailyPlan, Position, TradePlan } from '../domain/types'
 import {
-  committedPlanRisk,
-  countTradeSlotsUsed,
   whyCannotApprove,
 } from '../services/dailyPlanApproval'
 import { planMaxRiskDollars, planNotionalAtEntry } from '../services/tradePlanMoney'
@@ -86,14 +84,45 @@ export function DailyPlanPanel({
 
   const approvedList = useMemo(() => {
     if (!dailyPlan) return []
-    return dailyPlan.approvedPlans
-      .map((id) => tradePlans.find((p) => p.id === id))
-      .filter((p): p is TradePlan => p != null)
-      .filter((p) => p.status === 'approved' || p.status === 'entered')
+    const byId = new Map(tradePlans.map((p) => [p.id, p]))
+    const out: TradePlan[] = []
+    const seen = new Set<string>()
+
+    // Primary list: whatever this daily plan explicitly tracks.
+    for (const id of dailyPlan.approvedPlans) {
+      const p = byId.get(id)
+      if (!p) continue
+      if (p.status !== 'approved' && p.status !== 'entered') continue
+      if (seen.has(p.id)) continue
+      out.push(p)
+      seen.add(p.id)
+    }
+
+    // Visibility safety net: always show entered plans, even if missing from approvedPlans.
+    for (const p of tradePlans) {
+      if (p.status !== 'entered') continue
+      if (seen.has(p.id)) continue
+      out.push(p)
+      seen.add(p.id)
+    }
+
+    return out
   }, [dailyPlan, tradePlans])
 
-  const totalRisk = committedPlanRisk(tradePlans, dailyPlan)
-  const slotsUsed = countTradeSlotsUsed(tradePlans, dailyPlan)
+  const totalRisk = useMemo(
+    () => approvedList.reduce((s, p) => s + planMaxRiskDollars(p), 0),
+    [approvedList],
+  )
+  const slotsUsed = approvedList.length
+  const openRiskExposure = useMemo(
+    () =>
+      Math.round(
+        positions
+          .filter((p) => p.status === 'open')
+          .reduce((s, p) => s + p.initialRiskDollars, 0) * 100,
+      ) / 100,
+    [positions],
+  )
 
   const riskLimitMsg = useMemo(() => {
     if (!dailyPlan || candidates.length === 0) return null
@@ -216,6 +245,24 @@ export function DailyPlanPanel({
               <span className={styles.pillVal}>
                 {dailyPlan.maxTrades} trades · {formatMoney(dailyPlan.maxDailyLoss)}{' '}
                 loss
+              </span>
+            </div>
+            <div className={styles.pill}>
+              <span className={styles.pillLabel}>Committed risk</span>
+              <span className={styles.pillVal}>
+                {formatMoneyPrecise(totalRisk)}
+              </span>
+            </div>
+            <div className={styles.pill}>
+              <span className={styles.pillLabel}>Open risk</span>
+              <span className={styles.pillVal}>
+                {formatMoneyPrecise(openRiskExposure)}
+              </span>
+            </div>
+            <div className={styles.pill}>
+              <span className={styles.pillLabel}>Trades used</span>
+              <span className={styles.pillVal}>
+                {slotsUsed} / {dailyPlan.maxTrades}
               </span>
             </div>
           </div>
@@ -379,22 +426,6 @@ export function DailyPlanPanel({
                 })}
               </ul>
             )}
-            <div className={styles.riskBar}>
-              <span>
-                Committed risk{' '}
-                <strong>{formatMoneyPrecise(totalRisk)}</strong>
-                {dailyPlan && (
-                  <>
-                    {' '}
-                    / cap {formatMoney(dailyPlan.maxDailyLoss)}
-                  </>
-                )}
-              </span>
-              <span>
-                Trades {slotsUsed}
-                {dailyPlan && <> / {dailyPlan.maxTrades}</>}
-              </span>
-            </div>
           </div>
 
           {dailyPlan.notes?.trim() && (

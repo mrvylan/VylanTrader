@@ -94,6 +94,42 @@
   font-size: 15px;
 }
 
+.warnVal {
+  color: #fca5a5 !important;
+}
+
+.goodVal {
+  color: #86efac !important;
+}
+
+.signalBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.signal {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  line-height: 1.2;
+}
+
+.signalWarn {
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.3);
+  border-color: rgba(248, 113, 113, 0.45);
+}
+
+.signalGood {
+  color: #86efac;
+  background: rgba(20, 83, 45, 0.35);
+  border-color: rgba(74, 222, 128, 0.45);
+}
+
 .risk {
   width: 100%;
   font-size: 13px;

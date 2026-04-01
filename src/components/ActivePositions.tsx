@@ -31,6 +31,8 @@ export function ActivePositions({
   onMoveStop,
   onUpdateNotes,
   onReject,
+  /** When true, omit full-width grid span (use inside a multi-column row). */
+  embedded = false,
 }: {
   positions: Position[]
   onClose: (
@@ -42,7 +44,9 @@ export function ActivePositions({
   onMoveStop?: (positionId: string, stop: number) => void
   onUpdateNotes?: (positionId: string, notes: string) => void
   onReject?: (positionId: string, reason?: string) => void
+  embedded?: boolean
 }) {
+  const wrapClass = `${styles.wrap} ${embedded ? '' : styles.wrapPage}`.trim()
   const open = positions.filter((p) => p.status === 'open')
   const [closingId, setClosingId] = useState<string | null>(null)
   const [exitPx, setExitPx] = useState('')
@@ -52,7 +56,7 @@ export function ActivePositions({
 
   if (open.length === 0) {
     return (
-      <section className={styles.wrap} aria-labelledby="positions-title">
+      <section className={wrapClass} aria-labelledby="positions-title">
         <h2 id="positions-title" className={styles.title}>
           Positions
         </h2>
@@ -67,7 +71,7 @@ export function ActivePositions({
   const active = closingId ? open.find((p) => p.id === closingId) : null
 
   return (
-    <section className={styles.wrap} aria-labelledby="positions-title">
+    <section className={wrapClass} aria-labelledby="positions-title">
       <h2 id="positions-title" className={styles.title}>
         Positions
       </h2>

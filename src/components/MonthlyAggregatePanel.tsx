@@ -1,4 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  ColorType,
+  LineSeries,
+  createChart,
+  type IChartApi,
+  type UTCTimestamp,
+} from 'lightweight-charts'
 import type { TradeJournalEntry } from '../domain/types'
 import { aggregateJournalByMonth } from '../services/monthlyJournalAggregate'
 import styles from './MonthlyAggregatePanel.module.css'
@@ -35,6 +42,78 @@ function pnlClass(n: number) {
   return ''
 }
 
+type EquityPoint = { time: UTCTimestamp; value: number }
+
+function dateToUtcSeconds(date: string): UTCTimestamp {
+  return Math.floor(new Date(`${date}T12:00:00Z`).getTime() / 1000) as UTCTimestamp
+}
+
+function buildEquityCurve(journal: TradeJournalEntry[]): EquityPoint[] {
+  const rows = journal
+    .filter((j) => Number.isFinite(j.pnlDollars))
+    .slice()
+    .sort((a, b) => {
+      const d = a.date.localeCompare(b.date)
+      if (d !== 0) return d
+      return a.id.localeCompare(b.id)
+    })
+  let cumulative = 0
+  return rows.map((r) => {
+    cumulative += r.pnlDollars
+    return { time: dateToUtcSeconds(r.date), value: cumulative }
+  })
+}
+
+function EquityCurveChart({ points }: { points: EquityPoint[] }) {
+  const chartRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!chartRef.current || points.length === 0) return
+    const el = chartRef.current
+    let chart: IChartApi | null = createChart(el, {
+      width: el.clientWidth,
+      height: 320,
+      layout: {
+        background: { type: ColorType.Solid, color: '#0f1219' },
+        textColor: '#94a3b8',
+      },
+      grid: {
+        vertLines: { color: '#1a1f28' },
+        horzLines: { color: '#1a1f28' },
+      },
+      rightPriceScale: { borderColor: '#1f2933' },
+      timeScale: { borderColor: '#1f2933', timeVisible: true },
+    })
+    const series = chart.addSeries(LineSeries, {
+      color: '#86efac',
+      lineWidth: 2,
+      crosshairMarkerRadius: 4,
+      priceLineVisible: true,
+      lastValueVisible: true,
+    })
+    series.setData(points)
+    chart.timeScale().fitContent()
+    const ro = new ResizeObserver(() => {
+      if (!chart || !chartRef.current) return
+      chart.applyOptions({ width: chartRef.current.clientWidth })
+    })
+    ro.observe(el)
+    return () => {
+      ro.disconnect()
+      chart?.remove()
+      chart = null
+    }
+  }, [points])
+
+  if (points.length === 0) {
+    return (
+      <p className={styles.muted}>
+        No closed trades available for this view yet.
+      </p>
+    )
+  }
+  return <div ref={chartRef} className={styles.curveChart} />
+}
+
 export function MonthlyAggregatePanel({
   journal,
   onBackToDesk,
@@ -43,9 +122,15 @@ export function MonthlyAggregatePanel({
   onBackToDesk: () => void
 }) {
   const [month, setMonth] = useState(currentMonthLocal)
+  const [curveMode, setCurveMode] = useState<'all' | 'month'>('all')
 
   const agg = useMemo(
     () => aggregateJournalByMonth(journal, month),
+    [journal, month],
+  )
+  const allCurve = useMemo(() => buildEquityCurve(journal), [journal])
+  const monthCurve = useMemo(
+    () => buildEquityCurve(journal.filter((j) => j.date.startsWith(month))),
     [journal, month],
   )
 
@@ -79,6 +164,32 @@ export function MonthlyAggregatePanel({
           value={month}
           onChange={(e) => setMonth(e.target.value)}
         />
+      </div>
+
+      <div>
+        <div className={styles.curveHead}>
+          <h2 className={styles.blockTitle}>Equity curve</h2>
+          <div className={styles.curveTabs}>
+            <button
+              type="button"
+              className={curveMode === 'all' ? styles.curveTabActive : styles.curveTab}
+              onClick={() => setCurveMode('all')}
+            >
+              View trades
+            </button>
+            <button
+              type="button"
+              className={curveMode === 'month' ? styles.curveTabActive : styles.curveTab}
+              onClick={() => setCurveMode('month')}
+            >
+              View month
+            </button>
+          </div>
+        </div>
+        <div className={styles.curveCard}>
+          <EquityCurveChart points={curveMode === 'all' ? allCurve : monthCurve} />
+          <p className={styles.note}>You can zoom and pan directly on the chart.</p>
+        </div>
       </div>
 
       {totals.tradeCount === 0 ? (

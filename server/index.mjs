@@ -336,6 +336,13 @@ function normalizeTf(timeframe) {
   throw new Error(`Unsupported timeframe: ${timeframe}`)
 }
 
+function normalizeLookbackDays(raw) {
+  const n = Number(raw ?? 1)
+  if (n === 5) return 5
+  if (n === 10) return 10
+  return 1
+}
+
 function aggregateMinuteBarsToDaily(minuteBars) {
   /** @type {Map<string, {t:number,o:number,h:number,l:number,c:number,v:number}>} */
   const byDay = new Map()
@@ -386,6 +393,29 @@ async function fetchMassiveRangeAggs(ticker, multiplier, timespan, days) {
     c: r.c,
     v: r.v ?? 0,
   }))
+}
+
+function pctMoveFromDailyBars(dailyBars, lookbackDays, lastPriceOverride) {
+  if (!Array.isArray(dailyBars) || dailyBars.length === 0) return null
+  const lb = normalizeLookbackDays(lookbackDays)
+  if (dailyBars.length <= lb) return null
+  const base = Number(dailyBars[dailyBars.length - 1 - lb]?.c ?? 0)
+  const last =
+    Number.isFinite(Number(lastPriceOverride)) && Number(lastPriceOverride) > 0
+      ? Number(lastPriceOverride)
+      : Number(dailyBars[dailyBars.length - 1]?.c ?? 0)
+  if (!Number.isFinite(base) || base <= 0 || !Number.isFinite(last) || last <= 0) {
+    return null
+  }
+  return ((last - base) / base) * 100
+}
+
+async function fetchDailyBarsForLookback(ticker, lookbackDays) {
+  const lb = normalizeLookbackDays(lookbackDays)
+  // Buffer for market holidays/weekends.
+  const days = lb === 10 ? 45 : lb === 5 ? 25 : 14
+  const minuteBars = await fetchMassiveAggsBars(ticker, '5min', days)
+  return aggregateMinuteBarsToDaily(minuteBars)
 }
 
 /** Minute bars only (1min or 5min). */
@@ -579,6 +609,139 @@ app.get('/api/market/last', async (req, res) => {
   } catch (e) {
     console.error('[market/last]', e)
     res.status(502).json({ error: e instanceof Error ? e.message : 'Polygon error' })
+  }
+})
+
+/**
+ * Massive live scan (top gainers snapshot).
+ * Filters are applied server-side to reduce client load and API calls.
+ */
+app.get('/api/market/scan', async (req, res) => {
+  try {
+    if (!POLYGON_API_KEY) {
+      return res.status(500).json({ error: 'Missing MASSIVE_API_KEY (or POLYGON_API_KEY) in server env' })
+    }
+
+    const minPrice = Math.max(0, Number(req.query.minPrice ?? 1) || 1)
+    const maxPrice = Math.max(minPrice, Number(req.query.maxPrice ?? 5) || 5)
+    const minVolume = Math.max(0, Number(req.query.minVolume ?? 5_000_000) || 5_000_000)
+    const minGapPct = Number(req.query.minGapPct ?? 20) || 20
+    const lookbackDays = normalizeLookbackDays(req.query.lookbackDays)
+    const maxRows = Math.min(200, Math.max(1, Number(req.query.limit ?? 100) || 100))
+
+    const url = new URL(
+      `${MASSIVE_API_BASE}/v2/snapshot/locale/us/markets/stocks/gainers`,
+    )
+    url.searchParams.set('apiKey', POLYGON_API_KEY)
+    const cacheKey = `scan:gainers:${Math.floor(Date.now() / 30_000)}`
+    const j = await polygonFetchJson(url.toString(), cacheKey)
+    const tickers = Array.isArray(j?.tickers) ? j.tickers : []
+
+    const baseRows = tickers
+      .map((row) => {
+        const ticker = String(row?.ticker ?? '').toUpperCase()
+        const last = Number(row?.lastTrade?.p ?? row?.day?.c ?? 0)
+        const previousClose = Number(row?.prevDay?.c ?? 0)
+        const volume = Number(row?.day?.v ?? 0)
+        const gapPct =
+          previousClose > 0 && Number.isFinite(last)
+            ? ((last - previousClose) / previousClose) * 100
+            : null
+        return {
+          ticker,
+          last: Number.isFinite(last) && last > 0 ? last : null,
+          previousClose:
+            Number.isFinite(previousClose) && previousClose > 0
+              ? previousClose
+              : null,
+          volume: Number.isFinite(volume) && volume >= 0 ? volume : null,
+          gapPct: gapPct != null && Number.isFinite(gapPct) ? gapPct : null,
+        }
+      })
+      .filter((r) => r.ticker)
+      .filter(
+        (r) =>
+          r.last != null &&
+          r.last >= minPrice &&
+          r.last <= maxPrice &&
+          r.volume != null &&
+          r.volume > minVolume,
+      )
+
+    const enriched =
+      lookbackDays === 1
+        ? baseRows
+        : await Promise.all(
+            baseRows.map(async (r) => {
+              try {
+                const daily = await fetchDailyBarsForLookback(r.ticker, lookbackDays)
+                const movePct = pctMoveFromDailyBars(daily, lookbackDays, r.last)
+                return { ...r, gapPct: movePct }
+              } catch {
+                return { ...r, gapPct: null }
+              }
+            }),
+          )
+
+    const rows = enriched
+      .filter((r) => r.gapPct != null && r.gapPct >= minGapPct)
+      .sort((a, b) => (b.gapPct ?? -Infinity) - (a.gapPct ?? -Infinity))
+      .slice(0, maxRows)
+
+    return res.json({
+      source: 'massive',
+      market: 'us-stocks-gainers',
+      filters: {
+        minPrice,
+        maxPrice,
+        minVolume,
+        minGapPct,
+        lookbackDays,
+        limit: maxRows,
+      },
+      rows,
+      fetchedAt: Date.now(),
+    })
+  } catch (e) {
+    console.error('[market/scan]', e)
+    return res.status(502).json({ error: e instanceof Error ? e.message : 'Massive scan error' })
+  }
+})
+
+app.get('/api/market/lookback', async (req, res) => {
+  try {
+    if (!POLYGON_API_KEY) {
+      return res.status(500).json({ error: 'Missing MASSIVE_API_KEY (or POLYGON_API_KEY) in server env' })
+    }
+    const lookbackDays = normalizeLookbackDays(req.query.lookbackDays)
+    const raw =
+      Array.isArray(req.query.tickers) && req.query.tickers.length > 0
+        ? req.query.tickers.join(',')
+        : String(req.query.tickers ?? '')
+    const tickers = raw
+      .split(',')
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean)
+      .slice(0, 60)
+    if (tickers.length === 0) {
+      return res.status(400).json({ error: 'Missing tickers query param' })
+    }
+
+    const rows = await Promise.all(
+      tickers.map(async (ticker) => {
+        try {
+          const daily = await fetchDailyBarsForLookback(ticker, lookbackDays)
+          const gapPct = pctMoveFromDailyBars(daily, lookbackDays, null)
+          return { ticker, gapPct }
+        } catch {
+          return { ticker, gapPct: null }
+        }
+      }),
+    )
+    return res.json({ source: 'massive', lookbackDays, rows, fetchedAt: Date.now() })
+  } catch (e) {
+    console.error('[market/lookback]', e)
+    return res.status(502).json({ error: e instanceof Error ? e.message : 'Massive lookback error' })
   }
 })
 

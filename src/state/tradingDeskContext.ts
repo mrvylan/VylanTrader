@@ -52,6 +52,8 @@ export interface TradingDeskValue {
     patch: TradePlanEditPatch,
     bias: MarketTrend,
   ) => void
+  /** Delete a trade plan (local only). Blocked when an open position exists. */
+  deleteTradePlan: (planId: string) => void
   /** Returns true if a plan was added. */
   createPlanFromScan: (detail: WatchlistScanDetail) => Promise<boolean>
   enterPlan: (id: string, opts?: { fillPrice?: number }) => Promise<void>

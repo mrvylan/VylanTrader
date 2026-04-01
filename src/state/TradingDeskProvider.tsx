@@ -575,6 +575,33 @@ export function TradingDeskProvider({
     })
   }, [])
 
+  const deleteTradePlan = useCallback((planId: string) => {
+    setPlanActionError(null)
+    const plan = tradePlansRef.current.find((p) => p.id === planId)
+    if (!plan) return
+    const hasOpenPosition = positionsRef.current.some(
+      (p) => p.tradePlanId === planId && p.status === 'open',
+    )
+    if (hasOpenPosition) {
+      setPlanActionError('Close the open position before deleting this plan.')
+      return
+    }
+
+    setTradePlans((plans) => {
+      const next = plans.filter((p) => p.id !== planId)
+      tradePlansRef.current = next
+      return next
+    })
+    setDailyPlan((dp) =>
+      dp
+        ? {
+            ...dp,
+            approvedPlans: dp.approvedPlans.filter((x) => x !== planId),
+          }
+        : dp,
+    )
+  }, [])
+
   const createManualQuotePlan = useCallback(
     (
       ticker: string,
@@ -986,6 +1013,7 @@ export function TradingDeskProvider({
       togglePlanAlert,
       updatePlan,
       createManualQuotePlan,
+      deleteTradePlan,
       createPlanFromScan,
       enterPlan,
       updatePositionStop,
